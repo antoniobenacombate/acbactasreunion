@@ -23,6 +23,15 @@ a partir de transcripciones de grabaciones, audios transcritos o notas sueltas.
 Incluye **6 actas de ejemplo en 3 obras** para ver el funcionamiento desde el
 primer arranque (se pueden restablecer desde Configuración).
 
+## Acceso web
+
+La app está publicada en **https://antoniobenacombate.github.io/acbactasreunion/**
+(se redespliega sola en cada push a `main`). Repositorio:
+https://github.com/antoniobenacombate/acbactasreunion
+
+> Los datos viven en el navegador de cada dispositivo: lo que crees en el móvil
+> no se ve en el PC (y viceversa) hasta que haya backend compartido.
+
 ## Cómo arrancar
 
 Doble clic en **`ACB_ActasReunion.bat`** (raíz del proyecto).
@@ -84,6 +93,9 @@ Detalle técnico completo en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
 ## Historial
 
+- **v1.2** (11-06-2026): página **Obras y clientes** (editar/eliminar obras con
+  sus actas, obra preferente, clientes renombrables/eliminables); publicación en
+  GitHub Pages con despliegue automático.
 - **v1.1** (10-06-2026): entrada por **fotos de notas manuscritas** (visión de
   Claude, varias páginas, compresión local antes de enviar) y origen "Notas a mano".
 - **v1.0** (10-06-2026): primera versión. Generador IA + heurístico, BD local,
