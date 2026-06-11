@@ -1,10 +1,23 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileDown, Pencil, Save, Trash2, X } from "lucide-react";
-import { eliminarActa, guardarActa, obtenerActa, obtenerObra, usarBD } from "../servicios/bd";
+import {
+  cambiarEstadoActa,
+  eliminarActa,
+  guardarActa,
+  obtenerActa,
+  obtenerObra,
+  usarBD,
+} from "../servicios/bd";
 import { exportarActaDocx } from "../servicios/exportarDocx";
 import EditorActa, { type DatosEditables } from "../componentes/EditorActa";
-import { ETIQUETA_ORGANIZACION, ETIQUETA_ORIGEN, formatearFecha } from "../tipos";
+import {
+  ETIQUETA_ESTADO,
+  ETIQUETA_ORGANIZACION,
+  ETIQUETA_ORIGEN,
+  formatearFecha,
+  type EstadoActa,
+} from "../tipos";
 
 export default function DetalleActa() {
   usarBD();
@@ -164,7 +177,27 @@ export default function DetalleActa() {
             </ul>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-xs text-tinta-suave">
+          <div className="flex flex-wrap gap-4 items-center text-xs text-tinta-suave">
+            <label className="flex items-center gap-1.5">
+              Estado:
+              <select
+                className="campo !w-auto !py-1 !px-2 !text-xs"
+                value={acta.estado ?? "borrador"}
+                onChange={async (e) => {
+                  try {
+                    await cambiarEstadoActa(acta!.id, e.target.value as EstadoActa);
+                  } catch (err) {
+                    alert(`No se pudo cambiar el estado: ${(err as Error).message}`);
+                  }
+                }}
+              >
+                {(Object.keys(ETIQUETA_ESTADO) as EstadoActa[]).map((e) => (
+                  <option key={e} value={e}>
+                    {ETIQUETA_ESTADO[e]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span>Origen: <strong>{ETIQUETA_ORIGEN[acta.origen]}</strong></span>
             {acta.proximaReunion && (
               <span>Próxima reunión: <strong>{formatearFecha(acta.proximaReunion)}</strong></span>

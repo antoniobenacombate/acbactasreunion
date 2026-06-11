@@ -1,0 +1,15 @@
+name = "acb-actas-backend"
+main = "src/index.ts"
+compatibility_date = "2025-09-24"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "acb-actas-db"
+database_id = "59419d74-e4d5-47ae-afe4-fb3998ffbc1a"
+
+[vars]
+ADMIN_EMAIL = "antoniobenacombate@gmail.com"
+CORS_ORIGIN = "http://localhost:5180,https://antoniobenacombate.github.io"
+
+# Secretos (NUNCA en el repositorio; viven cifrados en Cloudflare):
+#   $ wrangler secret put JWT_SECRET

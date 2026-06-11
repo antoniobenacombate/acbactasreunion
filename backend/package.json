@@ -1,0 +1,20 @@
+{
+  "name": "acb-actas-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute acb-actas-db --remote --file=./schema.sql",
+    "db:seed": "wrangler d1 execute acb-actas-db --remote --file=./seed.sql",
+    "db:local": "wrangler d1 execute acb-actas-db --local --file=./schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250521.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.15.0"
+  }
+}

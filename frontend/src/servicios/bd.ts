@@ -1,21 +1,28 @@
-// Base de datos en Supabase con caché en memoria.
-// Las páginas leen en síncrono desde la caché (useSyncExternalStore) y las
-// mutaciones escriben primero en Supabase y luego actualizan la caché.
+// Acceso a datos a través de la API privada (Worker + D1) con caché en
+// memoria: las páginas leen en síncrono y las mutaciones escriben primero
+// en el servidor y después actualizan la caché.
 
 import { useSyncExternalStore } from "react";
-import type { Acta, Configuracion, Obra } from "../tipos";
-import { supabase } from "./supabase";
+import type { Acta, Configuracion, EstadoActa, Obra } from "../tipos";
+import { apiFetch } from "./api";
 import { refrescarPerfil, usarAuth } from "./autenticacion";
 
 const CLAVE_CONFIG = "acb_actas_config_v1";
 
+interface ClienteApi {
+  id: string;
+  nombre: string;
+  activo: number;
+}
+
 interface Cache {
   obras: Obra[];
   actas: Acta[];
+  clientes: ClienteApi[];
   obraPreferenteId?: string;
 }
 
-let cache: Cache = { obras: [], actas: [] };
+let cache: Cache = { obras: [], actas: [], clientes: [] };
 let estado: "inactivo" | "cargando" | "listo" | "error" = "inactivo";
 let mensajeError = "";
 let version = 0;
@@ -37,48 +44,30 @@ export function usarBD() {
   return { estado, mensajeError };
 }
 
-// --- Mapeo filas Supabase <-> modelo de la app ---
-
-function mapearActa(f: Record<string, unknown>): Acta {
-  return {
-    id: f.id as string,
-    numero: f.numero as number,
-    obraId: f.obra_id as string,
-    fecha: f.fecha as string,
-    lugar: (f.lugar as string) ?? "",
-    objeto: (f.objeto as string) ?? "",
-    asistentes: (f.asistentes as Acta["asistentes"]) ?? [],
-    asuntos: (f.asuntos as Acta["asuntos"]) ?? [],
-    proximaReunion: (f.proxima_reunion as string) ?? undefined,
-    origen: (f.origen as Acta["origen"]) ?? "manual",
-    textoOriginal: (f.texto_original as string) ?? undefined,
-    creadoEl: f.creado_el as string,
-  };
+interface ObraApi {
+  id: string;
+  codigo: string;
+  nombre: string;
+  cliente: string;
 }
 
-function filaActa(a: Acta) {
-  return {
-    id: a.id || undefined,
-    obra_id: a.obraId,
-    numero: a.numero,
-    fecha: a.fecha,
-    lugar: a.lugar,
-    objeto: a.objeto,
-    asistentes: a.asistentes,
-    asuntos: a.asuntos,
-    proxima_reunion: a.proximaReunion ?? null,
-    origen: a.origen,
-    texto_original: a.textoOriginal ?? null,
-  };
+interface ListaPaginada<T> {
+  datos: T[];
+  total: number;
+  pagina: number;
+  limite: number;
 }
 
-function mapearObra(f: Record<string, unknown>): Obra {
-  return {
-    id: f.id as string,
-    codigo: f.codigo as string,
-    nombre: f.nombre as string,
-    cliente: (f.cliente as string) ?? "Sin cliente",
-  };
+async function cargarActasCompletas(): Promise<Acta[]> {
+  const todas: Acta[] = [];
+  let pagina = 1;
+  for (;;) {
+    const lote = await apiFetch<ListaPaginada<Acta>>(`/api/actas?pagina=${pagina}&limite=200`);
+    todas.push(...lote.datos);
+    if (todas.length >= lote.total || lote.datos.length === 0) break;
+    pagina++;
+  }
+  return todas;
 }
 
 // --- Carga inicial (tras iniciar sesión con usuario aprobado) ---
@@ -88,15 +77,15 @@ export async function cargarBD(perfilObraPreferente?: string) {
   estado = "cargando";
   notificar();
   try {
-    const [obras, actas] = await Promise.all([
-      supabase.from("obras").select("*").order("creado_el"),
-      supabase.from("actas").select("*").order("fecha", { ascending: false }),
+    const [obras, clientes, actas] = await Promise.all([
+      apiFetch<ObraApi[]>("/api/obras"),
+      apiFetch<ListaPaginada<ClienteApi>>("/api/clientes?limite=200"),
+      cargarActasCompletas(),
     ]);
-    if (obras.error) throw new Error(obras.error.message);
-    if (actas.error) throw new Error(actas.error.message);
     cache = {
-      obras: (obras.data ?? []).map(mapearObra),
-      actas: (actas.data ?? []).map(mapearActa),
+      obras: obras.map((o) => ({ id: o.id, codigo: o.codigo, nombre: o.nombre, cliente: o.cliente })),
+      clientes: clientes.datos,
+      actas,
       obraPreferenteId: perfilObraPreferente,
     };
     estado = "listo";
@@ -122,33 +111,31 @@ export function obtenerObra(id: string): Obra | undefined {
 }
 
 export async function crearObra(datos: Omit<Obra, "id">): Promise<Obra> {
-  const { data, error } = await supabase
-    .from("obras")
-    .insert({ codigo: datos.codigo, nombre: datos.nombre, cliente: datos.cliente })
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  const obra = mapearObra(data);
+  const fila = await apiFetch<ObraApi>("/api/obras", {
+    method: "POST",
+    body: JSON.stringify({ codigo: datos.codigo, nombre: datos.nombre, cliente: datos.cliente }),
+  });
+  const obra: Obra = { id: fila.id, codigo: fila.codigo, nombre: fila.nombre, cliente: fila.cliente };
   cache.obras.push(obra);
+  await recargarClientes();
   notificar();
   return obra;
 }
 
 export async function actualizarObra(obra: Obra) {
-  const { error } = await supabase
-    .from("obras")
-    .update({ codigo: obra.codigo, nombre: obra.nombre, cliente: obra.cliente })
-    .eq("id", obra.id);
-  if (error) throw new Error(error.message);
+  await apiFetch(`/api/obras/${obra.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ codigo: obra.codigo, nombre: obra.nombre, cliente: obra.cliente }),
+  });
   const i = cache.obras.findIndex((o) => o.id === obra.id);
   if (i >= 0) cache.obras[i] = obra;
+  await recargarClientes();
   notificar();
 }
 
-/** Elimina la obra Y TODAS sus actas (cascada en la base de datos) */
+/** Elimina la obra Y TODAS sus actas (cascada en el servidor) */
 export async function eliminarObra(id: string) {
-  const { error } = await supabase.from("obras").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  await apiFetch(`/api/obras/${id}`, { method: "DELETE" });
   cache.obras = cache.obras.filter((o) => o.id !== id);
   cache.actas = cache.actas.filter((a) => a.obraId !== id);
   if (cache.obraPreferenteId === id) cache.obraPreferenteId = undefined;
@@ -156,14 +143,10 @@ export async function eliminarObra(id: string) {
 }
 
 export async function ponerObraPreferente(id: string | undefined) {
-  const { data: sesion } = await supabase.auth.getSession();
-  const usuario = sesion.session?.user.id;
-  if (!usuario) return;
-  const { error } = await supabase
-    .from("perfiles")
-    .update({ obra_preferente_id: id ?? null })
-    .eq("id", usuario);
-  if (error) throw new Error(error.message);
+  await apiFetch("/api/auth/obra-preferente", {
+    method: "PUT",
+    body: JSON.stringify({ obraId: id ?? null }),
+  });
   cache.obraPreferenteId = id;
   notificar();
   void refrescarPerfil();
@@ -173,26 +156,44 @@ export function obtenerObraPreferenteId(): string | undefined {
   return cache.obraPreferenteId;
 }
 
-// --- Clientes (derivados de las obras) ---
+// --- Clientes ---
+
+async function recargarClientes() {
+  const lote = await apiFetch<ListaPaginada<ClienteApi>>("/api/clientes?limite=200");
+  cache.clientes = lote.datos;
+}
 
 export function listarClientes(): string[] {
-  return [...new Set(cache.obras.map((o) => o.cliente))].sort();
+  return cache.clientes
+    .filter((c) => c.activo)
+    .map((c) => c.nombre)
+    .sort();
 }
 
 export async function renombrarCliente(antiguo: string, nuevo: string) {
-  const { error } = await supabase
-    .from("obras")
-    .update({ cliente: nuevo.trim() })
-    .eq("cliente", antiguo);
-  if (error) throw new Error(error.message);
+  const cliente = cache.clientes.find((c) => c.nombre === antiguo);
+  if (!cliente) throw new Error("Cliente no encontrado.");
+  await apiFetch(`/api/clientes/${cliente.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ nombre: nuevo.trim() }),
+  });
+  cliente.nombre = nuevo.trim();
   cache.obras.forEach((o) => {
     if (o.cliente === antiguo) o.cliente = nuevo.trim();
   });
   notificar();
 }
 
+/** Desactiva el cliente; sus obras pasan a "Sin cliente" (en servidor y caché) */
 export async function eliminarCliente(nombre: string) {
-  await renombrarCliente(nombre, "Sin cliente");
+  const cliente = cache.clientes.find((c) => c.nombre === nombre);
+  if (!cliente) throw new Error("Cliente no encontrado.");
+  await apiFetch(`/api/clientes/${cliente.id}`, { method: "DELETE" });
+  cache.obras.forEach((o) => {
+    if (o.cliente === nombre) o.cliente = "Sin cliente";
+  });
+  await recargarClientes();
+  notificar();
 }
 
 // --- Actas ---
@@ -210,30 +211,55 @@ export function siguienteNumero(obraId: string): number {
   return nums.length ? Math.max(...nums) + 1 : 1;
 }
 
+function cuerpoActa(acta: Acta) {
+  return {
+    obraId: acta.obraId,
+    fecha: acta.fecha,
+    objeto: acta.objeto,
+    lugar: acta.lugar,
+    asistentes: acta.asistentes,
+    asuntos: acta.asuntos,
+    proximaReunion: acta.proximaReunion,
+    textoOriginal: acta.textoOriginal,
+    origen: acta.origen,
+  };
+}
+
 export async function guardarActa(acta: Acta): Promise<Acta> {
   const existe = cache.actas.some((a) => a.id === acta.id);
   if (existe) {
-    const { error } = await supabase.from("actas").update(filaActa(acta)).eq("id", acta.id);
-    if (error) throw new Error(error.message);
+    await apiFetch(`/api/actas/${acta.id}`, {
+      method: "PUT",
+      body: JSON.stringify(cuerpoActa(acta)),
+    });
     const i = cache.actas.findIndex((a) => a.id === acta.id);
     cache.actas[i] = acta;
     notificar();
     return acta;
   }
-  // Alta: deja que la BD genere el id
-  const fila = filaActa(acta);
-  delete (fila as Record<string, unknown>).id;
-  const { data, error } = await supabase.from("actas").insert(fila).select().single();
-  if (error) throw new Error(error.message);
-  const guardada = mapearActa(data);
+  // Alta: el servidor asigna id, número correlativo, estado y autor
+  const guardada = await apiFetch<Acta>("/api/actas", {
+    method: "POST",
+    body: JSON.stringify(cuerpoActa(acta)),
+  });
   cache.actas.push(guardada);
   notificar();
   return guardada;
 }
 
+export async function cambiarEstadoActa(id: string, estadoNuevo: EstadoActa) {
+  await apiFetch(`/api/actas/${id}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify({ estado: estadoNuevo }),
+  });
+  const acta = cache.actas.find((a) => a.id === id);
+  if (acta) acta.estado = estadoNuevo;
+  notificar();
+}
+
+/** Eliminación lógica en el servidor */
 export async function eliminarActa(id: string) {
-  const { error } = await supabase.from("actas").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  await apiFetch(`/api/actas/${id}`, { method: "DELETE" });
   cache.actas = cache.actas.filter((a) => a.id !== id);
   notificar();
 }

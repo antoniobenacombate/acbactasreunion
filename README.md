@@ -14,9 +14,10 @@ a partir de transcripciones de grabaciones, audios transcritos o notas sueltas.
      PDF multipágina admitido, hasta 25 MB). Requiere clave.
    - **Modo IA con texto** (recomendado): usa el API de Claude si configuras tu clave.
    - **Modo básico**: análisis heurístico local solo para texto, sin conexión ni clave.
-2. **Base de datos en la nube (Supabase)** con índice interactivo de todas las
-   actas: búsqueda de texto completo y filtros por obra, cliente y origen.
-   Compartida entre los usuarios aprobados.
+2. **Base de datos en la nube (Cloudflare D1, vía API privada)** con índice
+   interactivo de todas las actas: búsqueda de texto completo y filtros por
+   obra, cliente y origen. Compartida entre los usuarios aprobados. Las actas
+   tienen **estado** (borrador / emitida / aprobada) y borrado lógico.
 3. **Exportación a Word (.docx)** siguiendo la plantilla corporativa
    `samples\AAMMDD AR01 MODELO ACTA REUNION-E0g.docx`, con nombre de archivo
    `AAMMDD AR## ACTA REUNION <OBRA>-E0.docx`.
@@ -31,22 +32,25 @@ La app está publicada en **https://antoniobenacombate.github.io/acbactasreunion
 (se redespliega sola en cada push a `main`). Repositorio:
 https://github.com/antoniobenacombate/acbactasreunion
 
-## Usuarios y datos compartidos (Supabase)
+## Usuarios y datos compartidos (Cloudflare Workers + D1)
 
-Los datos (obras y actas) viven en **Supabase** (proyecto `acbactasreunion`,
-org ACBenavides) y se comparten entre todos los usuarios aprobados, desde
-cualquier dispositivo.
+Los datos (clientes, obras y actas) viven en una base de datos privada
+**Cloudflare D1** a la que solo accede el **Worker** `acb-actas-backend`
+(API privada con autenticación). El navegador nunca toca la base de datos
+ni guarda credenciales de ella. Los datos se comparten entre todos los
+usuarios aprobados, desde cualquier dispositivo.
 
 Flujo de usuarios (igual que PORTALOBRA):
 
 1. Cualquiera puede **crear cuenta** (email + contraseña) en la pantalla de acceso.
 2. La cuenta queda **pendiente** hasta que un administrador la aprueba en
    el menú **Usuarios**.
-3. **El primer usuario registrado es administrador automáticamente** —
-   regístrate tú el primero.
+3. El **primer usuario** registrado (o el email del administrador designado)
+   es administrador automáticamente.
 
-La seguridad es por políticas RLS en la base de datos: solo usuarios aprobados
-leen o escriben obras y actas.
+La autorización se aplica en el Worker en cada petición: solo usuarios
+aprobados leen o escriben datos, y solo los admin gestionan usuarios.
+La contraseña se puede cambiar desde **Configuración**.
 
 ## Cómo arrancar
 
@@ -79,7 +83,8 @@ Sin clave, la app funciona igualmente con el generador básico local.
 
 ## Dónde se guardan los datos
 
-- **Obras y actas**: en Supabase (Postgres con RLS), compartidas por el equipo.
+- **Clientes, obras y actas**: en Cloudflare D1, accesible únicamente a través
+  del Worker `acb-actas-backend` (carpeta `backend\`). Compartidos por el equipo.
 - **Clave de API y datos por defecto**: solo en el navegador de cada dispositivo.
 - Las fotos y PDF de notas **no se almacenan**: se envían al API de Claude para
   generar el acta y solo se guarda el resultado.
@@ -110,7 +115,11 @@ Detalle técnico completo en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
 ## Historial
 
-- **v2.0** (11-06-2026): **backend Supabase** (datos compartidos en la nube),
+- **v3.0** (11-06-2026): migración de Supabase a **Cloudflare Workers + D1**
+  (API privada con JWT, autorización por aprobación, auditoría, clientes como
+  entidad con baja lógica, estado y borrado lógico de actas, cambio de
+  contraseña). Contraseña temporal de los usuarios migrados: `actas2026`.
+- **v2.0** (11-06-2026): backend Supabase (datos compartidos en la nube),
   **usuarios con aprobación por admin** (flujo PORTALOBRA, primer registro =
   admin) y **entrada por PDF** (notas escaneadas multipágina, hasta 25 MB).
 - **v1.2** (11-06-2026): página **Obras y clientes** (editar/eliminar obras con

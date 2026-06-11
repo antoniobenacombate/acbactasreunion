@@ -2,23 +2,56 @@
 
 ## Visión general
 
-SPA React con dos servicios externos:
+Arquitectura de tres capas (igual que ACB_PORTALOBRA):
 
-- **Supabase** (proyecto `acbactasreunion`, org ACBenavides): autenticación
-  email+contraseña y Postgres con RLS para obras, actas y perfiles.
+```
+Frontend (React, GitHub Pages)
+   ↓ HTTPS (Bearer JWT)
+Cloudflare Worker «acb-actas-backend» (API privada, backend\)
+   ↓ binding D1 (.prepare().bind() exclusivamente)
+Cloudflare D1 «acb-actas-db» (SQLite)
+```
+
+- **Toda** consulta a datos pasa por el Worker: el navegador no tiene
+  credenciales de base de datos, solo el token JWT de sesión del usuario.
 - **API de Claude** (opcional, clave por dispositivo): generación de actas
-  desde PDF, fotos de notas manuscritas o texto.
+  desde PDF, fotos de notas manuscritas o texto. Es la única otra llamada
+  externa del frontend.
+
+### Seguridad del backend
+
+- Autenticación propia: PBKDF2-SHA256 (10k iteraciones, salt aleatorio) y
+  JWT HS256 firmado con `JWT_SECRET` (secreto de Cloudflare, fuera del repo).
+- El middleware recarga el usuario desde D1 en cada petición: aprobar o
+  revocar una cuenta surte efecto inmediato, sin esperar a que caduque el token.
+- Autorización por capas: datos → usuario aprobado; gestión de usuarios → admin.
+- Consultas 100 % parametrizadas (`.prepare().bind()`); sin SQL dinámico
+  con entrada del usuario.
+- Errores genéricos hacia el cliente (sin detalles de infraestructura);
+  login con mensaje único que no revela si el email existe.
+- CORS restringido a `localhost:5180` y `antoniobenacombate.github.io`.
+- Tabla `auditoria` con las operaciones críticas (registro, login,
+  aprobaciones, altas/ediciones/borrados de clientes, obras y actas).
+
+### Modelo de datos (D1)
+
+- `usuarios` (id, email, nombre, password_hash, es_admin, aprobado,
+  obra_preferente_id, fechas).
+- `clientes` (id, nombre único, nif, direccion, telefono, email, **activo**
+  para baja lógica, fechas) — campos sensibles en columnas dedicadas,
+  preparadas para cifrado a nivel de aplicación.
+- `obras` (id, codigo, nombre, **cliente_id** FK).
+- `actas` (id, **cliente_id** FK, **obra_id** FK con borrado en cascada,
+  numero_acta, fecha, titulo, contenido JSON, **estado**
+  borrador/emitida/aprobada, autor, origen, **eliminado** para borrado
+  lógico, fechas).
 
 Usuarios (flujo PORTALOBRA): registro público → pendiente → aprobación por
-admin en la página Usuarios. El primer usuario registrado es admin (trigger).
-El email se autoconfirma por trigger; el control de acceso real es la
-aprobación. Tablas: `perfiles` (es_admin, aprobado, obra_preferente_id),
-`obras`, `actas` (FK con borrado en cascada). Políticas RLS: solo usuarios
-aprobados leen/escriben obras y actas; los admin gestionan perfiles.
+admin en la página Usuarios. El primer usuario (o `ADMIN_EMAIL`) es admin.
 
-`bd.ts` mantiene una caché en memoria sincronizada con Supabase: las páginas
+`bd.ts` mantiene una caché en memoria sincronizada con la API: las páginas
 leen en síncrono (useSyncExternalStore) y las mutaciones escriben primero en
-la nube y luego actualizan la caché.
+el Worker y luego actualizan la caché.
 
 ```
 frontend\src\
@@ -58,6 +91,21 @@ frontend\src\
 `localStorage["acb_actas_bd_v1"]`. Patrón de suscripción simple
 (`useSyncExternalStore`) para refrescar las vistas al guardar.
 La primera ejecución carga la semilla de ejemplos.
+
+## Despliegue del backend
+
+```bat
+cd backend
+npm install
+npx wrangler d1 create acb-actas-db        REM una sola vez; id en wrangler.toml
+npm run db:init                            REM esquema
+npm run db:seed                            REM migración de datos (una sola vez)
+npx wrangler secret put JWT_SECRET         REM secreto aleatorio largo
+npm run deploy
+```
+
+URL del Worker: `https://acb-actas-backend.antoniobenacombate.workers.dev`
+(constante `URL_API` en `frontend/src/servicios/api.ts`).
 
 ## Generador de actas
 

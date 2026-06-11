@@ -17,6 +17,14 @@ export interface Asunto {
 
 export type OrigenActa = "manuscrito" | "transcripcion" | "audio" | "nota" | "manual";
 
+export type EstadoActa = "borrador" | "emitida" | "aprobada";
+
+export const ETIQUETA_ESTADO: Record<EstadoActa, string> = {
+  borrador: "Borrador",
+  emitida: "Emitida",
+  aprobada: "Aprobada",
+};
+
 export interface Acta {
   id: string;
   /** Número de acta dentro de la obra (AR01, AR02...) */
@@ -30,6 +38,10 @@ export interface Acta {
   asuntos: Asunto[];
   proximaReunion?: string;
   origen: OrigenActa;
+  /** Estado del acta en su ciclo de vida */
+  estado?: EstadoActa;
+  /** Autor (asignado por el servidor al crear) */
+  autor?: string;
   /** Texto original volcado (transcripción o nota) */
   textoOriginal?: string;
   creadoEl: string;

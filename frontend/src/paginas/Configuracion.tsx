@@ -1,12 +1,27 @@
 import { useState } from "react";
-import { KeyRound, Save } from "lucide-react";
+import { KeyRound, Lock, Save } from "lucide-react";
 import { guardarConfig, obtenerConfig } from "../servicios/bd";
-import { usarAuth } from "../servicios/autenticacion";
+import { cambiarContrasena, usarAuth } from "../servicios/autenticacion";
 
 export default function Configuracion() {
   const { perfil } = usarAuth();
   const [config, setConfig] = useState(obtenerConfig());
   const [guardado, setGuardado] = useState(false);
+  const [contrasenaActual, setContrasenaActual] = useState("");
+  const [contrasenaNueva, setContrasenaNueva] = useState("");
+  const [avisoContrasena, setAvisoContrasena] = useState("");
+
+  async function actualizarContrasena() {
+    setAvisoContrasena("");
+    try {
+      await cambiarContrasena(contrasenaActual, contrasenaNueva);
+      setContrasenaActual("");
+      setContrasenaNueva("");
+      setAvisoContrasena("Contraseña actualizada ✓");
+    } catch (e) {
+      setAvisoContrasena((e as Error).message);
+    }
+  }
 
   function guardar() {
     guardarConfig(config);
@@ -73,12 +88,52 @@ export default function Configuracion() {
         {guardado && <span className="text-sm text-verde font-medium">Guardado ✓</span>}
       </div>
 
+      <div className="tarjeta space-y-4">
+        <h2 className="font-semibold flex items-center gap-2">
+          <Lock size={16} className="text-primario" /> Cambiar contraseña
+        </h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="etiqueta">Contraseña actual</label>
+            <input
+              type="password"
+              className="campo"
+              value={contrasenaActual}
+              onChange={(e) => setContrasenaActual(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="etiqueta">Contraseña nueva (mín. 6)</label>
+            <input
+              type="password"
+              className="campo"
+              value={contrasenaNueva}
+              onChange={(e) => setContrasenaNueva(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            className="boton-secundario"
+            onClick={actualizarContrasena}
+            disabled={!contrasenaActual || contrasenaNueva.length < 6}
+          >
+            Actualizar contraseña
+          </button>
+          {avisoContrasena && (
+            <span className={`text-xs font-medium ${avisoContrasena.includes("✓") ? "text-verde" : "text-acento"}`}>
+              {avisoContrasena}
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="tarjeta">
         <h2 className="font-semibold mb-1">Datos en la nube</h2>
         <p className="text-xs text-tinta-suave">
-          Las obras y actas se guardan en Supabase (proyecto acbactasreunion) y se comparten entre
-          todos los usuarios aprobados. Las copias de seguridad y la gestión avanzada se hacen
-          desde el panel de Supabase.
+          Las obras y actas se guardan en una base de datos privada (Cloudflare D1) a la que solo
+          accede la API del equipo, nunca el navegador. Se comparten entre todos los usuarios
+          aprobados.
         </p>
       </div>
     </div>
