@@ -1,11 +1,11 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FilePlus2, Search } from "lucide-react";
-import { listarActas, listarObras, suscribir } from "../servicios/bd";
+import { listarActas, listarObras, usarBD } from "../servicios/bd";
 import { ETIQUETA_ORIGEN, formatearFecha, type OrigenActa } from "../tipos";
 
 export default function IndiceActas() {
-  useSyncExternalStore(suscribir, () => localStorage.getItem("acb_actas_bd_v1"));
+  usarBD();
   const actas = listarActas();
   const obras = listarObras();
 

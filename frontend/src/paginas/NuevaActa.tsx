@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, Loader2, Save, Sparkles, Wand2, X } from "lucide-react";
+import { Camera, FileText, Loader2, Save, Sparkles, Wand2, X } from "lucide-react";
 import {
   crearObra,
   guardarActa,
@@ -12,18 +12,22 @@ import {
 import {
   generarActa,
   prepararImagen,
+  prepararPdf,
+  type Adjunto,
   type BorradorActa,
-  type ImagenEntrada,
 } from "../servicios/generador";
 import EditorActa, { type DatosEditables } from "../componentes/EditorActa";
 import type { Acta, OrigenActa } from "../tipos";
 import { ETIQUETA_ORIGEN } from "../tipos";
 
-interface FotoNotas {
+interface ArchivoNotas {
   nombre: string;
-  miniatura: string; // dataURL para previsualizar
-  imagen: ImagenEntrada;
+  /** dataURL para previsualizar; vacío en PDF (se muestra icono) */
+  miniatura: string;
+  adjunto: Adjunto;
 }
+
+const MAX_PDF_MB = 25; // límite prudente por petición al API
 
 export default function NuevaActa() {
   const navegar = useNavigate();
@@ -31,7 +35,7 @@ export default function NuevaActa() {
   const entradaArchivo = useRef<HTMLInputElement>(null);
 
   const [texto, setTexto] = useState("");
-  const [fotos, setFotos] = useState<FotoNotas[]>([]);
+  const [archivos, setArchivos] = useState<ArchivoNotas[]>([]);
   // Por defecto, la obra preferente (estrella en "Obras y clientes")
   const [obraId, setObraId] = useState(obtenerObraPreferenteId() ?? obras[0]?.id ?? "");
   const [origen, setOrigen] = useState<OrigenActa>("manuscrito");
@@ -46,30 +50,41 @@ export default function NuevaActa() {
   const [obraCodigo, setObraCodigo] = useState("");
   const [obraCliente, setObraCliente] = useState("");
 
-  async function anadirFotos(archivos: FileList | File[]) {
+  async function anadirArchivos(seleccion: FileList | File[]) {
     setAviso("");
-    const lista = [...archivos].filter((f) => f.type.startsWith("image/"));
+    const lista = [...seleccion].filter(
+      (f) => f.type.startsWith("image/") || f.type === "application/pdf" || /\.pdf$/i.test(f.name),
+    );
+    if (!lista.length) {
+      setAviso("Solo se admiten imágenes (JPG, PNG...) y archivos PDF.");
+      return;
+    }
     for (const archivo of lista) {
       try {
-        const imagen = await prepararImagen(archivo);
-        setFotos((previas) => [
-          ...previas,
+        const esPdf = archivo.type === "application/pdf" || /\.pdf$/i.test(archivo.name);
+        if (esPdf && archivo.size > MAX_PDF_MB * 1024 * 1024) {
+          setAviso(`"${archivo.name}" supera los ${MAX_PDF_MB} MB; divídelo o escanéalo a menos resolución.`);
+          continue;
+        }
+        const adjunto = esPdf ? await prepararPdf(archivo) : await prepararImagen(archivo);
+        setArchivos((previos) => [
+          ...previos,
           {
             nombre: archivo.name,
-            miniatura: `data:${imagen.mediaType};base64,${imagen.datosBase64}`,
-            imagen,
+            miniatura: esPdf ? "" : `data:${adjunto.mediaType};base64,${adjunto.datosBase64}`,
+            adjunto,
           },
         ]);
       } catch (e) {
         setAviso((e as Error).message);
       }
     }
-    // Si suben fotos, el origen por defecto es notas a mano
+    // Si suben archivos de notas, el origen por defecto es notas a mano
     if (lista.length) setOrigen("manuscrito");
   }
 
   async function generar() {
-    if (!texto.trim() && fotos.length === 0) return;
+    if (!texto.trim() && archivos.length === 0) return;
     setGenerando(true);
     setAviso("");
     try {
@@ -77,7 +92,7 @@ export default function NuevaActa() {
       const { borrador: b, aviso: av } = await generarActa(
         texto,
         config.claveApiClaude,
-        fotos.map((f) => f.imagen),
+        archivos.map((f) => f.adjunto),
       );
       if (b) aplicarBorrador(b);
       if (av) setAviso(av);
@@ -98,37 +113,44 @@ export default function NuevaActa() {
     });
   }
 
-  function guardar() {
+  async function guardar() {
     if (!borrador) return;
-    let idObra = obraId;
-    if (nuevaObra) {
-      if (!obraNombre.trim()) {
-        setAviso("Indica el nombre de la obra nueva.");
+    try {
+      let idObra = obraId;
+      if (nuevaObra) {
+        if (!obraNombre.trim()) {
+          setAviso("Indica el nombre de la obra nueva.");
+          return;
+        }
+        const obra = await crearObra({
+          nombre: obraNombre.trim(),
+          codigo: obraCodigo.trim() || obraNombre.trim().slice(0, 8).toUpperCase(),
+          cliente: obraCliente.trim() || "Sin cliente",
+        });
+        idObra = obra.id;
+      }
+      if (!idObra) {
+        setAviso("Selecciona una obra o crea una nueva.");
         return;
       }
-      idObra = crearObra({
-        nombre: obraNombre.trim(),
-        codigo: obraCodigo.trim() || obraNombre.trim().slice(0, 8).toUpperCase(),
-        cliente: obraCliente.trim() || "Sin cliente",
-      }).id;
+      const acta: Acta = {
+        id: "", // lo genera la base de datos
+        numero: siguienteNumero(idObra),
+        obraId: idObra,
+        ...borrador,
+        origen,
+        textoOriginal:
+          texto ||
+          (archivos.length
+            ? `[${archivos.length} archivo(s) de notas: ${archivos.map((f) => f.nombre).join(", ")}]`
+            : undefined),
+        creadoEl: new Date().toISOString(),
+      };
+      const guardada = await guardarActa(acta);
+      navegar(`/actas/${guardada.id}`);
+    } catch (e) {
+      setAviso(`No se pudo guardar: ${(e as Error).message}`);
     }
-    if (!idObra) {
-      setAviso("Selecciona una obra o crea una nueva.");
-      return;
-    }
-    const acta: Acta = {
-      id: `acta-${Date.now()}`,
-      numero: siguienteNumero(idObra),
-      obraId: idObra,
-      ...borrador,
-      origen,
-      textoOriginal:
-        texto ||
-        (fotos.length ? `[${fotos.length} foto(s) de notas manuscritas: ${fotos.map((f) => f.nombre).join(", ")}]` : undefined),
-      creadoEl: new Date().toISOString(),
-    };
-    guardarActa(acta);
-    navegar(`/actas/${acta.id}`);
   }
 
   return (
@@ -183,50 +205,62 @@ export default function NuevaActa() {
           </div>
         </div>
 
-        {/* Fotos de notas manuscritas */}
+        {/* Notas: PDF y fotos */}
         <div>
-          <label className="etiqueta">Fotos de las notas a mano</label>
+          <label className="etiqueta">Notas de la reunión (PDF o fotos)</label>
           <div
             className="border-2 border-dashed border-borde rounded-acb p-5 text-center cursor-pointer hover:border-primario hover:bg-primario-suave/30 transition"
             onClick={() => entradaArchivo.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              anadirFotos(e.dataTransfer.files);
+              anadirArchivos(e.dataTransfer.files);
             }}
           >
-            <Camera size={22} className="mx-auto text-tinta-suave mb-2" />
-            <p className="text-sm font-medium">Haz clic o arrastra aquí las fotos de tus notas</p>
+            <div className="flex items-center justify-center gap-3 mb-2 text-tinta-suave">
+              <FileText size={22} />
+              <Camera size={22} />
+            </div>
+            <p className="text-sm font-medium">
+              Haz clic o arrastra aquí tus notas: PDF escaneados o fotos
+            </p>
             <p className="text-xs text-tinta-suave mt-1">
-              JPG, PNG o HEIC convertido · varias páginas admitidas · se procesan con IA
+              PDF (hasta {MAX_PDF_MB} MB), JPG, PNG · varios archivos admitidos · se procesan con IA
             </p>
             <input
               ref={entradaArchivo}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf,.pdf"
               multiple
               className="hidden"
               onChange={(e) => {
-                if (e.target.files) anadirFotos(e.target.files);
+                if (e.target.files) anadirArchivos(e.target.files);
                 e.target.value = "";
               }}
             />
           </div>
 
-          {fotos.length > 0 && (
+          {archivos.length > 0 && (
             <div className="flex flex-wrap gap-3 mt-3">
-              {fotos.map((f, i) => (
+              {archivos.map((f, i) => (
                 <div key={i} className="relative group">
-                  <img
-                    src={f.miniatura}
-                    alt={f.nombre}
-                    className="h-24 w-auto rounded-acb border border-borde shadow-acb object-cover"
-                  />
+                  {f.adjunto.tipo === "pdf" ? (
+                    <div className="h-24 w-24 rounded-acb border border-borde shadow-acb bg-acento-suave flex flex-col items-center justify-center gap-1">
+                      <FileText size={26} className="text-acento" />
+                      <span className="text-[10px] font-bold text-acento">PDF</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={f.miniatura}
+                      alt={f.nombre}
+                      className="h-24 w-auto rounded-acb border border-borde shadow-acb object-cover"
+                    />
+                  )}
                   <button
                     type="button"
                     className="absolute -top-2 -right-2 bg-acento text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
-                    onClick={() => setFotos(fotos.filter((_, j) => j !== i))}
-                    title="Quitar foto"
+                    onClick={() => setArchivos(archivos.filter((_, j) => j !== i))}
+                    title="Quitar archivo"
                   >
                     <X size={13} />
                   </button>
@@ -239,12 +273,12 @@ export default function NuevaActa() {
 
         <div>
           <label className="etiqueta">
-            {fotos.length ? "Texto adicional (opcional)" : "Transcripción o nota"}
+            {archivos.length ? "Texto adicional (opcional)" : "Transcripción o nota"}
           </label>
           <textarea
             className="campo min-h-36 font-mono text-xs leading-relaxed"
             placeholder={
-              fotos.length
+              archivos.length
                 ? "Contexto extra para la IA: obra, asistentes que no estén en las notas, aclaraciones..."
                 : "Pega aquí la transcripción de la grabación o escribe tu nota.\n\nEjemplo:\nVisita de obra del 10 de junio de 2026 en la caseta de obra.\nAsistentes:\nVicente Ferrer (Director de Obra)\nAlfonso Nidávila (Jefe de Obra)\n\nSe revisó el avance del movimiento de tierras..."
             }
@@ -257,7 +291,7 @@ export default function NuevaActa() {
           <button
             className="boton-primario"
             onClick={generar}
-            disabled={generando || (!texto.trim() && fotos.length === 0)}
+            disabled={generando || (!texto.trim() && archivos.length === 0)}
           >
             {generando ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
             {generando ? "Generando..." : "Generar acta"}

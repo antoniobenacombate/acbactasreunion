@@ -2,8 +2,23 @@
 
 ## Visión general
 
-Aplicación 100 % cliente (SPA). No hay servidor: la persistencia es
-`localStorage` y la única llamada externa es al API de Claude (opcional).
+SPA React con dos servicios externos:
+
+- **Supabase** (proyecto `acbactasreunion`, org ACBenavides): autenticación
+  email+contraseña y Postgres con RLS para obras, actas y perfiles.
+- **API de Claude** (opcional, clave por dispositivo): generación de actas
+  desde PDF, fotos de notas manuscritas o texto.
+
+Usuarios (flujo PORTALOBRA): registro público → pendiente → aprobación por
+admin en la página Usuarios. El primer usuario registrado es admin (trigger).
+El email se autoconfirma por trigger; el control de acceso real es la
+aprobación. Tablas: `perfiles` (es_admin, aprobado, obra_preferente_id),
+`obras`, `actas` (FK con borrado en cascada). Políticas RLS: solo usuarios
+aprobados leen/escriben obras y actas; los admin gestionan perfiles.
+
+`bd.ts` mantiene una caché en memoria sincronizada con Supabase: las páginas
+leen en síncrono (useSyncExternalStore) y las mutaciones escriben primero en
+la nube y luego actualizan la caché.
 
 ```
 frontend\src\

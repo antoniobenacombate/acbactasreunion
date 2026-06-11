@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { KeyRound, RotateCcw, Save } from "lucide-react";
-import { guardarConfig, obtenerConfig, restablecerEjemplos } from "../servicios/bd";
+import { KeyRound, Save } from "lucide-react";
+import { guardarConfig, obtenerConfig } from "../servicios/bd";
+import { usarAuth } from "../servicios/autenticacion";
 
 export default function Configuracion() {
+  const { perfil } = usarAuth();
   const [config, setConfig] = useState(obtenerConfig());
   const [guardado, setGuardado] = useState(false);
 
@@ -16,7 +18,9 @@ export default function Configuracion() {
     <div className="space-y-5 max-w-2xl">
       <header>
         <h1 className="text-2xl font-bold">Configuración</h1>
-        <p className="text-sm text-tinta-suave">Ajustes de la aplicación y del generador con IA</p>
+        <p className="text-sm text-tinta-suave">
+          Ajustes de este dispositivo. Sesión: {perfil?.email}
+        </p>
       </header>
 
       <div className="tarjeta space-y-4">
@@ -24,9 +28,9 @@ export default function Configuracion() {
           <KeyRound size={16} className="text-primario" /> Generación con IA (Claude)
         </h2>
         <p className="text-xs text-tinta-suave">
-          Con una clave de API de Anthropic las actas se generan con IA: redacción formal,
-          asuntos bien separados y asignación de acciones. Sin clave funciona el modo básico local.
-          La clave se guarda solo en este navegador.
+          Con una clave de API de Anthropic las actas se generan con IA: lee fotos y PDF de notas
+          manuscritas y redacta en registro formal. Sin clave funciona el modo básico solo con
+          texto. La clave se guarda únicamente en este navegador.
         </p>
         <div>
           <label className="etiqueta">Clave de API (sk-ant-...)</label>
@@ -69,19 +73,13 @@ export default function Configuracion() {
         {guardado && <span className="text-sm text-verde font-medium">Guardado ✓</span>}
       </div>
 
-      <div className="tarjeta border-acento/30 space-y-3">
-        <h2 className="font-semibold text-acento">Zona de mantenimiento</h2>
+      <div className="tarjeta">
+        <h2 className="font-semibold mb-1">Datos en la nube</h2>
         <p className="text-xs text-tinta-suave">
-          Restablece la base de datos local a los 6 ejemplos iniciales. Se perderán las actas creadas.
+          Las obras y actas se guardan en Supabase (proyecto acbactasreunion) y se comparten entre
+          todos los usuarios aprobados. Las copias de seguridad y la gestión avanzada se hacen
+          desde el panel de Supabase.
         </p>
-        <button
-          className="boton-peligro"
-          onClick={() => {
-            if (confirm("¿Restablecer la base de datos a los ejemplos iniciales?")) restablecerEjemplos();
-          }}
-        >
-          <RotateCcw size={15} /> Restablecer ejemplos
-        </button>
       </div>
     </div>
   );

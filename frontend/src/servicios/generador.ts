@@ -16,9 +16,25 @@ export interface BorradorActa {
   generadoCon: "ia" | "heuristico";
 }
 
-export interface ImagenEntrada {
+export interface Adjunto {
+  tipo: "imagen" | "pdf";
   mediaType: string;
   datosBase64: string;
+}
+
+/** Mantiene compatibilidad: una imagen es un adjunto de tipo imagen */
+export type ImagenEntrada = Adjunto;
+
+/** Lee un PDF de notas/acta escaneada como base64 para enviarlo al API */
+export async function prepararPdf(archivo: File): Promise<Adjunto> {
+  const buffer = await archivo.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binario = "";
+  const TROZO = 0x8000;
+  for (let i = 0; i < bytes.length; i += TROZO) {
+    binario += String.fromCharCode(...bytes.subarray(i, i + TROZO));
+  }
+  return { tipo: "pdf", mediaType: "application/pdf", datosBase64: btoa(binario) };
 }
 
 /**
@@ -41,7 +57,7 @@ export async function prepararImagen(archivo: File): Promise<ImagenEntrada> {
     lienzo.height = Math.round(img.height * escala);
     lienzo.getContext("2d")!.drawImage(img, 0, 0, lienzo.width, lienzo.height);
     const dataUrl = lienzo.toDataURL("image/jpeg", 0.85);
-    return { mediaType: "image/jpeg", datosBase64: dataUrl.split(",")[1] };
+    return { tipo: "imagen", mediaType: "image/jpeg", datosBase64: dataUrl.split(",")[1] };
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -94,8 +110,8 @@ const ESQUEMA_ACTA = {
 };
 
 const INSTRUCCIONES_SISTEMA = `Eres asistente técnico de un ingeniero de caminos que redacta actas de reunión de visitas de obra en España.
-Recibirás una o varias FOTOS DE NOTAS MANUSCRITAS tomadas en la reunión, una transcripción de grabación, una nota de voz transcrita o una nota suelta (o una combinación).
-Si hay imágenes: transcribe la letra manuscrita con cuidado, interpreta abreviaturas habituales de obra (DO, CON, AT, PK, ODT, T-2, etc.), flechas, tachones y listas, y combínalo con el texto adicional si lo hay.
+Recibirás FOTOS DE NOTAS MANUSCRITAS, DOCUMENTOS PDF (notas escaneadas, actas previas, croquis anotados), una transcripción de grabación, una nota de voz transcrita o una nota suelta (o una combinación).
+Si hay imágenes o PDF: transcribe la letra manuscrita con cuidado, interpreta abreviaturas habituales de obra (DO, CON, AT, PK, ODT, T-2, etc.), flechas, tachones y listas, y combínalo con el texto adicional si lo hay. Si el PDF tiene varias páginas, intégralas todas en una sola acta.
 Tu tarea: extraer y redactar el acta con registro formal técnico de obra civil española.
 Reglas:
 - Redacta los desarrollos en tercera persona e impersonal ("Se aprueba...", "El contratista presentará...").
@@ -108,19 +124,26 @@ Reglas:
 export async function generarConIA(
   texto: string,
   claveApi: string,
-  imagenes: ImagenEntrada[] = [],
+  adjuntos: Adjunto[] = [],
 ): Promise<BorradorActa> {
-  // Contenido multimodal: primero las fotos de notas, después el texto
+  // Contenido multimodal: primero las fotos/PDF de notas, después el texto
   const contenido = [
-    ...imagenes.map((im) => ({
-      type: "image",
-      source: { type: "base64", media_type: im.mediaType, data: im.datosBase64 },
-    })),
+    ...adjuntos.map((a) =>
+      a.tipo === "pdf"
+        ? {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: a.datosBase64 },
+          }
+        : {
+            type: "image",
+            source: { type: "base64", media_type: a.mediaType, data: a.datosBase64 },
+          },
+    ),
     {
       type: "text",
       text:
         texto.trim() ||
-        "Genera el acta a partir de las notas manuscritas de las imágenes adjuntas.",
+        "Genera el acta a partir de las notas adjuntas (imágenes o PDF).",
     },
   ];
 
@@ -283,21 +306,21 @@ export function generarHeuristico(texto: string): BorradorActa {
 export async function generarActa(
   texto: string,
   claveApi: string,
-  imagenes: ImagenEntrada[] = [],
+  adjuntos: Adjunto[] = [],
 ): Promise<{ borrador?: BorradorActa; aviso?: string }> {
   const clave = claveApi.trim();
 
-  if (imagenes.length > 0) {
+  if (adjuntos.length > 0) {
     if (!clave) {
       return {
         aviso:
-          "Para leer fotos de notas manuscritas hace falta la clave de API de Claude. Configúrala en Configuración (o pasa las notas a texto).",
+          "Para leer fotos o PDF de notas hace falta la clave de API de Claude. Configúrala en Configuración (o pasa las notas a texto).",
       };
     }
     try {
-      return { borrador: await generarConIA(texto, clave, imagenes) };
+      return { borrador: await generarConIA(texto, clave, adjuntos) };
     } catch (e) {
-      return { aviso: `No se pudieron procesar las imágenes (${(e as Error).message}).` };
+      return { aviso: `No se pudieron procesar los adjuntos (${(e as Error).message}).` };
     }
   }
 

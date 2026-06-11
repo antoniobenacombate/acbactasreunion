@@ -1,13 +1,9 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Building2, ClipboardList, FileText, Users } from "lucide-react";
-import { listarActas, listarObras, suscribir } from "../servicios/bd";
+import { listarActas, listarObras, usarBD } from "../servicios/bd";
 import { BarrasHorizontales, ColumnasMensuales, Donut } from "../componentes/Graficas";
 import { ETIQUETA_ORIGEN, formatearFecha } from "../tipos";
-
-function usarBD() {
-  useSyncExternalStore(suscribir, () => localStorage.getItem("acb_actas_bd_v1"));
-}
 
 export default function Dashboard() {
   usarBD();

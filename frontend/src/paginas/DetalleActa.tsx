@@ -1,13 +1,13 @@
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileDown, Pencil, Save, Trash2, X } from "lucide-react";
-import { eliminarActa, guardarActa, obtenerActa, obtenerObra, suscribir } from "../servicios/bd";
+import { eliminarActa, guardarActa, obtenerActa, obtenerObra, usarBD } from "../servicios/bd";
 import { exportarActaDocx } from "../servicios/exportarDocx";
 import EditorActa, { type DatosEditables } from "../componentes/EditorActa";
 import { ETIQUETA_ORGANIZACION, ETIQUETA_ORIGEN, formatearFecha } from "../tipos";
 
 export default function DetalleActa() {
-  useSyncExternalStore(suscribir, () => localStorage.getItem("acb_actas_bd_v1"));
+  usarBD();
   const { id } = useParams();
   const navegar = useNavigate();
   const acta = id ? obtenerActa(id) : undefined;
@@ -39,16 +39,24 @@ export default function DetalleActa() {
     }
   }
 
-  function guardarCambios() {
+  async function guardarCambios() {
     if (!edicion) return;
-    guardarActa({ ...acta!, ...edicion });
-    setEditando(false);
+    try {
+      await guardarActa({ ...acta!, ...edicion });
+      setEditando(false);
+    } catch (e) {
+      alert(`No se pudo guardar: ${(e as Error).message}`);
+    }
   }
 
-  function borrar() {
+  async function borrar() {
     if (confirm(`¿Eliminar el acta ${numeroAR} — ${acta!.objeto}?`)) {
-      eliminarActa(acta!.id);
-      navegar("/actas");
+      try {
+        await eliminarActa(acta!.id);
+        navegar("/actas");
+      } catch (e) {
+        alert(`No se pudo eliminar: ${(e as Error).message}`);
+      }
     }
   }
 

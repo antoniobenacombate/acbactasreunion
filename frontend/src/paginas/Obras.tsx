@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { Check, Pencil, Plus, Star, Trash2, X } from "lucide-react";
 import {
   actualizarObra,
@@ -11,12 +11,12 @@ import {
   obtenerObraPreferenteId,
   ponerObraPreferente,
   renombrarCliente,
-  suscribir,
+  usarBD,
 } from "../servicios/bd";
 import type { Obra } from "../tipos";
 
 export default function Obras() {
-  useSyncExternalStore(suscribir, () => localStorage.getItem("acb_actas_bd_v1"));
+  usarBD();
   const obras = listarObras();
   const actas = listarActas();
   const clientes = listarClientes();
@@ -38,37 +38,51 @@ export default function Obras() {
     return actas.filter((a) => a.obraId === obraId).length;
   }
 
-  function guardarEdicion() {
+  async function guardarEdicion() {
     if (!borrador) return;
     if (!borrador.nombre.trim()) return;
-    actualizarObra({
-      ...borrador,
-      nombre: borrador.nombre.trim(),
-      codigo: borrador.codigo.trim() || borrador.nombre.trim().slice(0, 8).toUpperCase(),
-      cliente: borrador.cliente.trim() || "Sin cliente",
-    });
-    setEditandoId(null);
-    setBorrador(null);
+    try {
+      await actualizarObra({
+        ...borrador,
+        nombre: borrador.nombre.trim(),
+        codigo: borrador.codigo.trim() || borrador.nombre.trim().slice(0, 8).toUpperCase(),
+        cliente: borrador.cliente.trim() || "Sin cliente",
+      });
+      setEditandoId(null);
+      setBorrador(null);
+    } catch (e) {
+      alert(`No se pudo guardar: ${(e as Error).message}`);
+    }
   }
 
-  function borrarObra(obra: Obra) {
+  async function borrarObra(obra: Obra) {
     const n = numActas(obra.id);
     const mensaje =
       n > 0
         ? `¿Eliminar la obra "${obra.nombre}" y sus ${n} actas asociadas?\n\nEsta acción no se puede deshacer.`
         : `¿Eliminar la obra "${obra.nombre}"?`;
-    if (confirm(mensaje)) eliminarObra(obra.id);
+    if (confirm(mensaje)) {
+      try {
+        await eliminarObra(obra.id);
+      } catch (e) {
+        alert(`No se pudo eliminar: ${(e as Error).message}`);
+      }
+    }
   }
 
-  function crear() {
+  async function crear() {
     if (!nueva.nombre.trim()) return;
-    crearObra({
-      nombre: nueva.nombre.trim(),
-      codigo: nueva.codigo.trim() || nueva.nombre.trim().slice(0, 8).toUpperCase(),
-      cliente: nueva.cliente.trim() || "Sin cliente",
-    });
-    setNueva({ nombre: "", codigo: "", cliente: "" });
-    setCreando(false);
+    try {
+      await crearObra({
+        nombre: nueva.nombre.trim(),
+        codigo: nueva.codigo.trim() || nueva.nombre.trim().slice(0, 8).toUpperCase(),
+        cliente: nueva.cliente.trim() || "Sin cliente",
+      });
+      setNueva({ nombre: "", codigo: "", cliente: "" });
+      setCreando(false);
+    } catch (e) {
+      alert(`No se pudo crear: ${(e as Error).message}`);
+    }
   }
 
   return (
@@ -171,7 +185,7 @@ export default function Obras() {
                   <button
                     type="button"
                     title={esPreferente ? "Obra preferente" : "Marcar como preferente"}
-                    onClick={() => ponerObraPreferente(esPreferente ? undefined : obra.id)}
+                    onClick={() => void ponerObraPreferente(esPreferente ? undefined : obra.id)}
                     className={`shrink-0 transition ${
                       esPreferente ? "text-ambar" : "text-borde hover:text-ambar"
                     }`}
@@ -242,9 +256,9 @@ export default function Obras() {
                     <button
                       className="boton-primario !px-3"
                       title="Guardar"
-                      onClick={() => {
+                      onClick={async () => {
                         if (clienteNuevoNombre.trim() && clienteNuevoNombre.trim() !== c) {
-                          renombrarCliente(c, clienteNuevoNombre.trim());
+                          await renombrarCliente(c, clienteNuevoNombre.trim());
                         }
                         setClienteEditando(null);
                       }}
@@ -284,7 +298,7 @@ export default function Obras() {
                             `¿Eliminar el cliente "${c}"? Sus ${nObras} obra(s) pasarán a "Sin cliente".`,
                           )
                         )
-                          eliminarCliente(c);
+                          void eliminarCliente(c);
                       }}
                     >
                       <Trash2 size={14} />
