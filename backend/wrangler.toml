@@ -9,7 +9,7 @@ database_id = "59419d74-e4d5-47ae-afe4-fb3998ffbc1a"
 
 [vars]
 ADMIN_EMAIL = "antoniobenacombate@gmail.com"
-CORS_ORIGIN = "http://localhost:5180,https://antoniobenacombate.github.io"
+CORS_ORIGIN = "http://localhost:5180,https://antoniobenacombate.github.io,https://acb-actas-reunion.pages.dev"
 
 # Secretos (NUNCA en el repositorio; viven cifrados en Cloudflare):
 #   $ wrangler secret put JWT_SECRET
