@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import {
   aprobarUsuario,
+  eliminarUsuario,
   hacerAdmin,
   listarPerfiles,
   usarAuth,
@@ -102,6 +103,17 @@ export default function Usuarios() {
                         }}
                       >
                         <ShieldCheck size={15} className={p.esAdmin ? "text-primario" : ""} />
+                      </button>
+                      <button
+                        className="boton-secundario !px-3 text-acento hover:bg-acento hover:text-white"
+                        title="Eliminar usuario"
+                        onClick={async () => {
+                          if (!window.confirm(`¿Eliminar a ${p.nombre || p.email} de forma permanente?`)) return;
+                          await eliminarUsuario(p.id);
+                          void cargar();
+                        }}
+                      >
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   )}

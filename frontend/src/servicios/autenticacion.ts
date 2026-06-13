@@ -113,3 +113,7 @@ export async function aprobarUsuario(id: string, aprobado: boolean) {
 export async function hacerAdmin(id: string, esAdmin: boolean) {
   await apiFetch(`/api/usuarios/${id}`, { method: "PUT", body: JSON.stringify({ esAdmin }) });
 }
+
+export async function eliminarUsuario(id: string) {
+  await apiFetch(`/api/usuarios/${id}`, { method: "DELETE" });
+}
