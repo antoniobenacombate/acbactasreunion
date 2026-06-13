@@ -12,7 +12,8 @@ import {
 import {
   generarActa,
   prepararImagen,
-  prepararPdf,
+  prepararPdfComoImagenes,
+  MAX_PAGINAS_PDF,
   type Adjunto,
   type BorradorActa,
 } from "../servicios/generador";
@@ -22,9 +23,10 @@ import { ETIQUETA_ORIGEN } from "../tipos";
 
 interface ArchivoNotas {
   nombre: string;
-  /** dataURL para previsualizar; vacío en PDF (se muestra icono) */
-  miniatura: string;
-  adjunto: Adjunto;
+  miniatura: string; // dataURL de la primera página/imagen para previsualizar
+  adjuntos: Adjunto[]; // 1 para imágenes; N para PDFs (una por página)
+  esPdf: boolean;
+  paginasTotales?: number; // si el PDF tenía más páginas de MAX_PAGINAS_PDF
 }
 
 const MAX_PDF_MB = 25; // límite prudente por petición al API
@@ -39,6 +41,7 @@ export default function NuevaActa() {
   // Por defecto, la obra preferente (estrella en "Obras y clientes")
   const [obraId, setObraId] = useState(obtenerObraPreferenteId() ?? obras[0]?.id ?? "");
   const [origen, setOrigen] = useState<OrigenActa>("manuscrito");
+  const [preprocesando, setPreprocesando] = useState(false);
   const [generando, setGenerando] = useState(false);
   const [aviso, setAviso] = useState("");
   const [borrador, setBorrador] = useState<DatosEditables | null>(null);
@@ -66,16 +69,40 @@ export default function NuevaActa() {
           setAviso(`"${archivo.name}" supera los ${MAX_PDF_MB} MB; divídelo o escanéalo a menos resolución.`);
           continue;
         }
-        const adjunto = esPdf ? await prepararPdf(archivo) : await prepararImagen(archivo);
-        setArchivos((previos) => [
-          ...previos,
-          {
-            nombre: archivo.name,
-            miniatura: esPdf ? "" : `data:${adjunto.mediaType};base64,${adjunto.datosBase64}`,
-            adjunto,
-          },
-        ]);
+        if (esPdf) {
+          setPreprocesando(true);
+          try {
+            const { adjuntos, paginasTotales } = await prepararPdfComoImagenes(archivo);
+            setArchivos((previos) => [
+              ...previos,
+              {
+                nombre: archivo.name,
+                miniatura: `data:image/jpeg;base64,${adjuntos[0].datosBase64}`,
+                adjuntos,
+                esPdf: true,
+                paginasTotales: paginasTotales > MAX_PAGINAS_PDF ? paginasTotales : undefined,
+              },
+            ]);
+            if (paginasTotales > MAX_PAGINAS_PDF) {
+              setAviso(`"${archivo.name}" tiene ${paginasTotales} páginas; se procesarán las primeras ${MAX_PAGINAS_PDF}.`);
+            }
+          } finally {
+            setPreprocesando(false);
+          }
+        } else {
+          const adjunto = await prepararImagen(archivo);
+          setArchivos((previos) => [
+            ...previos,
+            {
+              nombre: archivo.name,
+              miniatura: `data:${adjunto.mediaType};base64,${adjunto.datosBase64}`,
+              adjuntos: [adjunto],
+              esPdf: false,
+            },
+          ]);
+        }
       } catch (e) {
+        setPreprocesando(false);
         setAviso((e as Error).message);
       }
     }
@@ -92,7 +119,7 @@ export default function NuevaActa() {
       const { borrador: b, aviso: av } = await generarActa(
         texto,
         config.claveApiClaude,
-        archivos.map((f) => f.adjunto),
+        archivos.flatMap((f) => f.adjuntos),
       );
       if (b) aplicarBorrador(b);
       if (av) setAviso(av);
@@ -209,20 +236,19 @@ export default function NuevaActa() {
         <div>
           <label className="etiqueta">Notas de la reunión (PDF o fotos)</label>
           <div
-            className="border-2 border-dashed border-borde rounded-acb p-5 text-center cursor-pointer hover:border-primario hover:bg-primario-suave/30 transition"
-            onClick={() => entradaArchivo.current?.click()}
+            className={`border-2 border-dashed rounded-acb p-5 text-center transition ${preprocesando ? "border-primario bg-primario-suave/20 cursor-wait" : "border-borde cursor-pointer hover:border-primario hover:bg-primario-suave/30"}`}
+            onClick={() => !preprocesando && entradaArchivo.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              anadirArchivos(e.dataTransfer.files);
+              if (!preprocesando) anadirArchivos(e.dataTransfer.files);
             }}
           >
             <div className="flex items-center justify-center gap-3 mb-2 text-tinta-suave">
-              <FileText size={22} />
-              <Camera size={22} />
+              {preprocesando ? <Loader2 size={22} className="animate-spin text-primario" /> : <><FileText size={22} /><Camera size={22} /></>}
             </div>
             <p className="text-sm font-medium">
-              Haz clic o arrastra aquí tus notas: PDF escaneados o fotos
+              {preprocesando ? "Procesando páginas del PDF…" : "Haz clic o arrastra aquí tus notas: PDF escaneados o fotos"}
             </p>
             <p className="text-xs text-tinta-suave mt-1">
               PDF (hasta {MAX_PDF_MB} MB), JPG, PNG · varios archivos admitidos · se procesan con IA
@@ -244,18 +270,18 @@ export default function NuevaActa() {
             <div className="flex flex-wrap gap-3 mt-3">
               {archivos.map((f, i) => (
                 <div key={i} className="relative group">
-                  {f.adjunto.tipo === "pdf" ? (
-                    <div className="h-24 w-24 rounded-acb border border-borde shadow-acb bg-acento-suave flex flex-col items-center justify-center gap-1">
-                      <FileText size={26} className="text-acento" />
-                      <span className="text-[10px] font-bold text-acento">PDF</span>
-                    </div>
-                  ) : (
+                  <div className="relative">
                     <img
                       src={f.miniatura}
                       alt={f.nombre}
                       className="h-24 w-auto rounded-acb border border-borde shadow-acb object-cover"
                     />
-                  )}
+                    {f.esPdf && (
+                      <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1 rounded">
+                        {f.adjuntos.length}{f.paginasTotales ? `/${f.paginasTotales}` : ""} págs.
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="absolute -top-2 -right-2 bg-acento text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
@@ -291,7 +317,7 @@ export default function NuevaActa() {
           <button
             className="boton-primario"
             onClick={generar}
-            disabled={generando || (!texto.trim() && archivos.length === 0)}
+            disabled={generando || preprocesando || (!texto.trim() && archivos.length === 0)}
           >
             {generando ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
             {generando ? "Generando..." : "Generar acta"}

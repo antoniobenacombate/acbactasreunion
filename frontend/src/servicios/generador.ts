@@ -3,8 +3,14 @@
 //   1) IA (API de Claude) si hay clave configurada — resultado de máxima calidad.
 //   2) Heurístico local sin conexión — análisis básico del texto.
 
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Asistente, Asunto, Organizacion } from "../tipos";
 import { hoyISO } from "../tipos";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+export const MAX_PAGINAS_PDF = 20;
 
 export interface BorradorActa {
   fecha: string;
@@ -25,16 +31,37 @@ export interface Adjunto {
 /** Mantiene compatibilidad: una imagen es un adjunto de tipo imagen */
 export type ImagenEntrada = Adjunto;
 
-/** Lee un PDF de notas/acta escaneada como base64 para enviarlo al API */
-export async function prepararPdf(archivo: File): Promise<Adjunto> {
+/**
+ * Convierte cada página de un PDF a JPEG y la devuelve como adjunto de imagen.
+ * Permite que Claude vea el contenido visual (manuscritos, croquis, escaneados)
+ * igual que cuando el usuario sube fotos directamente.
+ */
+export async function prepararPdfComoImagenes(
+  archivo: File,
+): Promise<{ adjuntos: Adjunto[]; paginasTotales: number }> {
+  const MAX = 2000;
   const buffer = await archivo.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binario = "";
-  const TROZO = 0x8000;
-  for (let i = 0; i < bytes.length; i += TROZO) {
-    binario += String.fromCharCode(...bytes.subarray(i, i + TROZO));
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const paginasTotales = pdf.numPages;
+  const numPaginas = Math.min(paginasTotales, MAX_PAGINAS_PDF);
+
+  const adjuntos: Adjunto[] = [];
+  for (let i = 1; i <= numPaginas; i++) {
+    const pagina = await pdf.getPage(i);
+    const vpBase = pagina.getViewport({ scale: 1 });
+    const escala = Math.min(1, MAX / Math.max(vpBase.width, vpBase.height));
+    const vp = pagina.getViewport({ scale: escala });
+    const lienzo = document.createElement("canvas");
+    lienzo.width = Math.round(vp.width);
+    lienzo.height = Math.round(vp.height);
+    await pagina.render({ canvas: lienzo, viewport: vp }).promise;
+    adjuntos.push({
+      tipo: "imagen",
+      mediaType: "image/jpeg",
+      datosBase64: lienzo.toDataURL("image/jpeg", 0.85).split(",")[1],
+    });
   }
-  return { tipo: "pdf", mediaType: "application/pdf", datosBase64: btoa(binario) };
+  return { adjuntos, paginasTotales };
 }
 
 /**

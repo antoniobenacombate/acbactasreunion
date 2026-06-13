@@ -29,4 +29,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: { port: 5180 },
+  // pdfjs-dist usa imports dinámicos internos que rompen el prebuilder de Vite
+  optimizeDeps: { exclude: ["pdfjs-dist"] },
 });
