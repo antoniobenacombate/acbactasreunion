@@ -60,6 +60,36 @@ export default function Configuracion() {
       </div>
 
       <div className="tarjeta space-y-4">
+        <h2 className="font-semibold flex items-center gap-2">
+          <KeyRound size={16} className="text-acento" /> Alternativa gratis: OCR.space
+        </h2>
+        <p className="text-xs text-tinta-suave">
+          Sin tarjeta de crédito: extrae el texto de fotos y PDF con OCR.space (cuota gratis,
+          solo necesitas registrarte con tu email en{" "}
+          <a
+            href="https://ocr.space/ocrapi"
+            target="_blank"
+            rel="noreferrer"
+            className="text-primario underline"
+          >
+            ocr.space/ocrapi
+          </a>
+          ). Se usa solo si no hay clave de Claude configurada arriba. La redacción del acta sale
+          con el modo básico (sin IA), así que revisa el resultado antes de guardar.
+        </p>
+        <div>
+          <label className="etiqueta">Clave de API de OCR.space</label>
+          <input
+            type="password"
+            className="campo font-mono"
+            value={config.claveApiOcrSpace}
+            onChange={(e) => setConfig({ ...config, claveApiOcrSpace: e.target.value })}
+            placeholder="K8...."
+          />
+        </div>
+      </div>
+
+      <div className="tarjeta space-y-4">
         <h2 className="font-semibold">Datos por defecto</h2>
         <div className="grid md:grid-cols-2 gap-4">
           <div>

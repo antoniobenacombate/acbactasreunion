@@ -218,6 +218,38 @@ export async function generarConIA(
 }
 
 // ---------------------------------------------------------------------------
+// Modo OCR.space: extrae texto de fotos/PDF sin necesitar clave de Claude
+// (cuota gratis sin tarjeta; menor calidad que la IA con manuscrito difícil)
+// ---------------------------------------------------------------------------
+
+interface RespuestaOcrSpace {
+  IsErroredOnProcessing?: boolean;
+  ErrorMessage?: string[];
+  ParsedResults?: { ParsedText?: string }[];
+}
+
+export async function extraerTextoOcrSpace(adjunto: Adjunto, claveOcr: string): Promise<string> {
+  const cuerpo = new URLSearchParams({
+    apikey: claveOcr,
+    base64Image: `data:${adjunto.mediaType};base64,${adjunto.datosBase64}`,
+    language: "spa",
+    OCREngine: "2",
+    scale: "true",
+  });
+  const respuesta = await fetch("https://api.ocr.space/parse/image", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: cuerpo,
+  });
+  if (!respuesta.ok) throw new Error(`OCR.space: error HTTP ${respuesta.status}`);
+  const datos = (await respuesta.json()) as RespuestaOcrSpace;
+  if (datos.IsErroredOnProcessing) {
+    throw new Error(`OCR.space: ${datos.ErrorMessage?.[0] ?? "error desconocido"}`);
+  }
+  return (datos.ParsedResults ?? []).map((r) => r.ParsedText ?? "").join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Modo heurístico: análisis local del texto, sin conexión
 // ---------------------------------------------------------------------------
 
@@ -334,21 +366,38 @@ export async function generarActa(
   texto: string,
   claveApi: string,
   adjuntos: Adjunto[] = [],
+  claveOcr: string = "",
 ): Promise<{ borrador?: BorradorActa; aviso?: string }> {
   const clave = claveApi.trim();
+  const claveOcrLimpia = claveOcr.trim();
 
   if (adjuntos.length > 0) {
-    if (!clave) {
-      return {
-        aviso:
-          "Para leer fotos o PDF de notas hace falta la clave de API de Claude. Configúrala en Configuración (o pasa las notas a texto).",
-      };
+    if (clave) {
+      try {
+        return { borrador: await generarConIA(texto, clave, adjuntos) };
+      } catch (e) {
+        return { aviso: `No se pudieron procesar los adjuntos (${(e as Error).message}).` };
+      }
     }
-    try {
-      return { borrador: await generarConIA(texto, clave, adjuntos) };
-    } catch (e) {
-      return { aviso: `No se pudieron procesar los adjuntos (${(e as Error).message}).` };
+    if (claveOcrLimpia) {
+      try {
+        const textosOcr = await Promise.all(
+          adjuntos.map((a) => extraerTextoOcrSpace(a, claveOcrLimpia)),
+        );
+        const textoCombinado = [texto, ...textosOcr].filter((t) => t.trim()).join("\n\n");
+        return {
+          borrador: generarHeuristico(textoCombinado),
+          aviso:
+            "Texto extraído con OCR.space (sin IA): revisa con cuidado fechas, asistentes y redacción antes de guardar.",
+        };
+      } catch (e) {
+        return { aviso: `No se pudo leer con OCR.space (${(e as Error).message}).` };
+      }
     }
+    return {
+      aviso:
+        "Para leer fotos o PDF de notas hace falta una clave de API de Claude u OCR.space. Configúrala en Configuración (o pasa las notas a texto).",
+    };
   }
 
   if (clave) {

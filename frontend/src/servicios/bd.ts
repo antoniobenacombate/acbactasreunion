@@ -266,14 +266,17 @@ export async function eliminarActa(id: string) {
 
 // --- Configuración local del dispositivo (clave API, datos por defecto) ---
 
+const CONFIG_DEFECTO: Configuracion = {
+  claveApiClaude: "",
+  claveApiOcrSpace: "",
+  nombreAT: "Antonio Benavides",
+  empresaAT: "U.T.E. Ing63 Grusamar Cainur",
+};
+
 export function obtenerConfig(): Configuracion {
   const crudo = localStorage.getItem(CLAVE_CONFIG);
-  if (crudo) return JSON.parse(crudo) as Configuracion;
-  return {
-    claveApiClaude: "",
-    nombreAT: "Antonio Benavides",
-    empresaAT: "U.T.E. Ing63 Grusamar Cainur",
-  };
+  if (crudo) return { ...CONFIG_DEFECTO, ...(JSON.parse(crudo) as Partial<Configuracion>) };
+  return CONFIG_DEFECTO;
 }
 
 export function guardarConfig(config: Configuracion) {

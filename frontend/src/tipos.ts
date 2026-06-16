@@ -56,6 +56,7 @@ export interface Obra {
 
 export interface Configuracion {
   claveApiClaude: string;
+  claveApiOcrSpace: string;
   nombreAT: string;
   empresaAT: string;
 }

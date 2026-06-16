@@ -120,6 +120,7 @@ export default function NuevaActa() {
         texto,
         config.claveApiClaude,
         archivos.flatMap((f) => f.adjuntos),
+        config.claveApiOcrSpace,
       );
       if (b) aplicarBorrador(b);
       if (av) setAviso(av);
