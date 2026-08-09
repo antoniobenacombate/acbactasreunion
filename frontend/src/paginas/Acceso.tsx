@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
-import { entrar, registrar } from "../servicios/autenticacion";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { entrar, registrar, usarAuth } from "../servicios/autenticacion";
+import { urlEntradaPortalObra } from "../servicios/portalobra";
 
 export default function Acceso() {
   const navegar = useNavigate();
@@ -11,6 +12,7 @@ export default function Acceso() {
   const [nombre, setNombre] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
+  const { errorPortalObra } = usarAuth();
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -100,6 +102,19 @@ export default function Acceso() {
             Las cuentas nuevas quedan pendientes hasta que el administrador las apruebe.
           </p>
         )}
+
+        {/* Acceso único con la aplicación hermana */}
+        <div className="mt-5 pt-4 border-t border-borde">
+          {errorPortalObra && (
+            <p className="text-xs text-acento font-medium mb-2">{errorPortalObra}</p>
+          )}
+          <a href={urlEntradaPortalObra()} className="boton-secundario w-full justify-center">
+            <ExternalLink size={14} /> Entrar con ACB Portal Obra
+          </a>
+          <p className="text-[11px] text-tinta-suave mt-2">
+            Usa tu cuenta de Portal Obra: si ya está aprobada allí, entras aquí sin registrarte.
+          </p>
+        </div>
       </div>
     </div>
   );

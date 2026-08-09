@@ -52,6 +52,17 @@ La autorización se aplica en el Worker en cada petición: solo usuarios
 aprobados leen o escriben datos, y solo los admin gestionan usuarios.
 La contraseña se puede cambiar desde **Configuración**.
 
+### Acceso único con ACB Portal Obra
+
+En la pantalla de acceso, **Entrar con ACB Portal Obra** permite usar la cuenta
+de la app hermana: si ya está aprobada allí, entra aquí sin registrarse ni
+esperar una segunda aprobación. Las dos apps siguen siendo independientes (cada
+una con su base de datos y su secreto); Actas valida el token llamando a la API
+de Portal Obra. La barra lateral incluye además un salto directo a Portal Obra.
+
+Falta la mitad del circuito en el repositorio de Portal Obra (devolver el token
+al parámetro `volver`): ver [docs/INTEGRACION_PORTALOBRA.md](docs/INTEGRACION_PORTALOBRA.md).
+
 ## Cómo arrancar
 
 Doble clic en **`ACB_ActasReunion.bat`** (raíz del proyecto).
@@ -99,7 +110,7 @@ Sin clave, la app funciona igualmente con el generador básico local.
 | `samples\`     | Plantilla Word del acta                                          |
 | `backend\`     | Reservada (no hay servidor; ver su LEEME.md)                     |
 | `herramientas\`| Utilidades (`extraer_logos.py`, `dev.bat`)                       |
-| `docs\`        | Documentación técnica (`ARQUITECTURA.md`)                        |
+| `docs\`        | Documentación técnica (`ARQUITECTURA.md`, `INTEGRACION_PORTALOBRA.md`) |
 | `app_notas\`   | Tus notas de trabajo                                             |
 
 Detalle técnico completo en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
@@ -115,6 +126,9 @@ Detalle técnico completo en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
 ## Historial
 
+- **v3.1** (09-08-2026): **acceso único con ACB Portal Obra** (entrar con la
+  cuenta de la app hermana, sin compartir secretos ni bases de datos) y salto
+  directo entre las dos aplicaciones.
 - **v3.0** (11-06-2026): migración de Supabase a **Cloudflare Workers + D1**
   (API privada con JWT, autorización por aprobación, auditoría, clientes como
   entidad con baja lógica, estado y borrado lógico de actas, cambio de

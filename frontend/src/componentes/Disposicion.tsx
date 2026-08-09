@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Building2,
+  ExternalLink,
   FilePlus2,
   FileText,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { salir, usarAuth } from "../servicios/autenticacion";
+import { URL_PORTALOBRA } from "../servicios/portalobra";
 import { cargarBD, estadoBD, usarBD } from "../servicios/bd";
 
 const enlaces = [
@@ -94,6 +96,16 @@ export default function Disposicion() {
           )}
         </nav>
         <div className="p-3 border-t border-borde space-y-2">
+          {/* Salto a la aplicación hermana de inspección de obra */}
+          <a
+            href={URL_PORTALOBRA}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-acb text-sm font-medium text-tinta-suave hover:bg-fondo hover:text-tinta transition"
+          >
+            <ExternalLink size={17} />
+            ACB Portal Obra
+          </a>
           <p className="px-2 text-[11px] text-tinta-suave truncate" title={perfil.email}>
             {perfil.nombre || perfil.email}
           </p>

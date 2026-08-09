@@ -5,6 +5,7 @@
 
 import { useSyncExternalStore } from "react";
 import { apiFetch, borrarToken, guardarToken, obtenerToken } from "./api";
+import { extraerTokenPortalObra } from "./portalobra";
 
 export interface Perfil {
   id: string;
@@ -18,6 +19,8 @@ export interface Perfil {
 interface EstadoAuth {
   cargado: boolean;
   perfil: Perfil | null;
+  /** Error del acceso único con Portal Obra, para mostrarlo en la pantalla de acceso */
+  errorPortalObra?: string;
 }
 
 let estado: EstadoAuth = { cargado: false, perfil: null };
@@ -60,7 +63,31 @@ let iniciado = false;
 export function iniciarAuth() {
   if (iniciado) return;
   iniciado = true;
+
+  // Llegada desde ACB Portal Obra con su token en la URL: se canjea por una
+  // sesión de esta app. Si falla, se sigue con la sesión local de siempre.
+  const tokenPortalObra = extraerTokenPortalObra();
+  if (tokenPortalObra) {
+    void entrarConPortalObra(tokenPortalObra).catch(async (err) => {
+      await cargarPerfil();
+      estado = { ...estado, errorPortalObra: (err as Error).message };
+      notificar();
+    });
+    return;
+  }
+
   void cargarPerfil();
+}
+
+/** Canjea un token de ACB Portal Obra por una sesión de ACB Actas (acceso único). */
+export async function entrarConPortalObra(token: string) {
+  const datos = await apiFetch<{ token: string; usuario: Perfil }>("/api/auth/portalobra", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+  guardarToken(datos.token);
+  estado = { cargado: true, perfil: datos.usuario };
+  notificar();
 }
 
 export async function entrar(email: string, contrasena: string) {
