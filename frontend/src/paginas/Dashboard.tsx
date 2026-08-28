@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, ClipboardList, FileText, Users } from "lucide-react";
 import { listarActas, listarObras, usarBD } from "../servicios/bd";
@@ -7,8 +7,16 @@ import { ETIQUETA_ORIGEN, formatearFecha } from "../tipos";
 
 export default function Dashboard() {
   usarBD();
-  const actas = listarActas();
+  const todasLasActas = listarActas();
   const obras = listarObras();
+
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+
+  const actas = useMemo(
+    () => todasLasActas.filter((a) => (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta)),
+    [todasLasActas, desde, hasta],
+  );
 
   const datos = useMemo(() => {
     const porObra = obras.map((o) => ({
@@ -58,9 +66,42 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-tinta-suave">Resumen de actas de visitas de obra y reuniones</p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-sm text-tinta-suave">Resumen de actas de visitas de obra y reuniones</p>
+        </div>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="etiqueta" htmlFor="dash-desde">Desde</label>
+            <input
+              id="dash-desde"
+              type="date"
+              value={desde}
+              onChange={(e) => setDesde(e.target.value)}
+              className="campo"
+            />
+          </div>
+          <div>
+            <label className="etiqueta" htmlFor="dash-hasta">Hasta</label>
+            <input
+              id="dash-hasta"
+              type="date"
+              value={hasta}
+              onChange={(e) => setHasta(e.target.value)}
+              className="campo"
+            />
+          </div>
+          {(desde || hasta) && (
+            <button
+              type="button"
+              onClick={() => { setDesde(""); setHasta(""); }}
+              className="text-xs text-primario font-medium hover:underline pb-2"
+            >
+              Quitar filtro
+            </button>
+          )}
+        </div>
       </header>
 
       {/* KPIs */}
